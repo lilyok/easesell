@@ -57,18 +57,14 @@ export class MockImageSearchProvider implements ImageSearchProvider {
       };
     }
 
-    // ~12% not-found rate for variety when filenames are ordinary
-    if (hashString(key) % 17 === 0) {
-      return {
-        found: false,
-        provider: this.id,
-        mode: this.mode,
-      };
-    }
-
     const ranked = rankPreferAmazon(MOCK_CATALOG);
-    const index = hashString(key) % ranked.length;
-    const match = { ...ranked[index] };
+    const amazon = ranked.filter((match) => match.source === "amazon");
+    const other = ranked.filter((match) => match.source !== "amazon");
+    const hash = hashString(key);
+    // Keep non-Amazon results in the demo while preferring Amazon 90% of the time.
+    const pool = hash % 10 === 0 && other.length > 0 ? other : amazon;
+    const index = hashString(`${key}:match`) % pool.length;
+    const match = { ...pool[index] };
 
     return {
       found: true,

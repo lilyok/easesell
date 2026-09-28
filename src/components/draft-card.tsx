@@ -40,6 +40,38 @@ function statusLabel(status: ListingDraft["status"]) {
   }
 }
 
+function PriceInput({
+  id,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  disabled: boolean;
+  onChange: (raw: string, price: number) => void;
+}) {
+  return (
+    <Input
+      id={id}
+      type="text"
+      inputMode="decimal"
+      className="pl-7"
+      disabled={disabled}
+      value={value}
+      onValueChange={(raw) => {
+        if (!/^\d*(?:\.\d{0,2})?$/.test(raw)) return;
+        const parsed = Number.parseFloat(raw);
+        const price =
+          Number.isFinite(parsed) && parsed >= 0
+            ? Math.round(parsed * 100) / 100
+            : 0;
+        onChange(raw, price);
+      }}
+    />
+  );
+}
+
 export function DraftCard({
   draft,
   discountPercent,
@@ -48,7 +80,8 @@ export function DraftCard({
   onRetry,
 }: DraftCardProps) {
   const isBusy = draft.status === "searching" || draft.status === "pending";
-  const isEditable = draft.status === "ready" || draft.status === "posted";
+  const isEditable = draft.status === "ready";
+  const showFields = isEditable || draft.status === "posted";
 
   return (
     <article
@@ -140,13 +173,14 @@ export function DraftCard({
           </p>
         )}
 
-        {isEditable && (
+        {showFields && (
           <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor={`title-${draft.id}`}>Title</Label>
               <Input
                 id={`title-${draft.id}`}
                 value={draft.title}
+                disabled={!isEditable}
                 onValueChange={(title) => onChange(draft.id, { title })}
               />
             </div>
@@ -156,6 +190,7 @@ export function DraftCard({
                 id={`desc-${draft.id}`}
                 value={draft.description}
                 rows={3}
+                disabled={!isEditable}
                 onChange={(e) =>
                   onChange(draft.id, { description: e.target.value })
                 }
@@ -168,17 +203,12 @@ export function DraftCard({
                   <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">
                     $
                   </span>
-                  <Input
+                  <PriceInput
                     id={`price-${draft.id}`}
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className="pl-7"
-                    value={String(draft.price)}
-                    onValueChange={(raw) =>
-                      onChange(draft.id, {
-                        price: Number.parseFloat(raw) || 0,
-                      })
+                    disabled={!isEditable}
+                    value={draft.priceInput ?? String(draft.price)}
+                    onChange={(priceInput, price) =>
+                      onChange(draft.id, { priceInput, price })
                     }
                   />
                 </div>

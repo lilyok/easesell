@@ -4,6 +4,7 @@ import type { MarketplaceProvider } from "./types";
 export type {
   MarketplaceProvider,
   MarketplaceAuthState,
+  MarketplaceListingInput,
   MarketplacePostResult,
 } from "./types";
 

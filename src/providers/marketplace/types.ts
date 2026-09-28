@@ -1,4 +1,10 @@
-import type { ListingDraft } from "@/lib/types";
+export interface MarketplaceListingInput {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  currency: string;
+}
 
 export interface MarketplaceAuthState {
   connected: boolean;
@@ -19,5 +25,7 @@ export interface MarketplaceProvider {
   getAuthState(): Promise<MarketplaceAuthState>;
   login(): Promise<MarketplaceAuthState>;
   logout(): Promise<void>;
-  postListings(drafts: ListingDraft[]): Promise<MarketplacePostResult[]>;
+  postListings(
+    listings: MarketplaceListingInput[]
+  ): Promise<MarketplacePostResult[]>;
 }

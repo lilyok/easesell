@@ -26,6 +26,8 @@ export interface ListingDraft {
   title: string;
   description: string;
   price: number;
+  priceInput: string | null;
+  priceManuallyEdited: boolean;
   originalPrice: number | null;
   currency: string;
   source: ProductSource | null;

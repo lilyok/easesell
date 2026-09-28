@@ -1,6 +1,6 @@
-import type { ListingDraft } from "@/lib/types";
 import type {
   MarketplaceAuthState,
+  MarketplaceListingInput,
   MarketplacePostResult,
   MarketplaceProvider,
 } from "./types";
@@ -17,48 +17,37 @@ export class MockFacebookMarketplaceProvider implements MarketplaceProvider {
   readonly id = "mock-facebook-marketplace";
   readonly mode = "mock" as const;
 
-  private connected = false;
-  private displayName: string | null = null;
-
   async getAuthState(): Promise<MarketplaceAuthState> {
     return {
-      connected: this.connected,
-      displayName: this.displayName,
+      connected: false,
+      displayName: null,
       mode: this.mode,
     };
   }
 
   async login(): Promise<MarketplaceAuthState> {
     await delay(1100);
-    this.connected = true;
-    this.displayName = "Demo Seller";
-    return this.getAuthState();
+    return {
+      connected: true,
+      displayName: "Demo Seller",
+      mode: this.mode,
+    };
   }
 
   async logout(): Promise<void> {
     await delay(300);
-    this.connected = false;
-    this.displayName = null;
   }
 
   async postListings(
-    drafts: ListingDraft[]
+    listings: MarketplaceListingInput[]
   ): Promise<MarketplacePostResult[]> {
-    if (!this.connected) {
-      return drafts.map((draft) => ({
-        draftId: draft.id,
-        success: false,
-        errorMessage: "Not connected to Facebook",
-      }));
-    }
-
     const results: MarketplacePostResult[] = [];
-    for (const draft of drafts) {
+    for (const listing of listings) {
       await delay(700 + Math.floor(Math.random() * 500));
       results.push({
-        draftId: draft.id,
+        draftId: listing.id,
         success: true,
-        marketplaceListingId: `fb-mock-${draft.id.slice(0, 8)}`,
+        marketplaceListingId: `fb-mock-${listing.id.slice(0, 8)}`,
       });
     }
     return results;

@@ -53,8 +53,8 @@ export default function SettingsPage() {
             </div>
           </div>
           <Slider
-            min={5}
-            max={90}
+            min={1}
+            max={100}
             step={1}
             disabled={!hydrated}
             value={[settings.discountPercent]}
@@ -77,8 +77,10 @@ export default function SettingsPage() {
         <Alert>
           <AlertTitle>Providers</AlertTitle>
           <AlertDescription>
-            Image search and Facebook posting use mock/demo providers until
-            live API keys are configured. See the README for{" "}
+            Image search and Facebook posting currently use mock/demo
+            providers. The environment variables documented in the README are
+            reserved for future live adapters; setting them alone does not
+            enable live posting. See the README for{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">
               SERPAPI_KEY
             </code>{" "}

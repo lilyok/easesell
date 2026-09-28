@@ -115,6 +115,15 @@ export function SendToMarketplace({ drafts }: { drafts: ListingDraft[] }) {
 
   async function post() {
     if (readyDrafts.length === 0) return;
+    const listings = readyDrafts.map(
+      ({ id, title, description, price, currency }) => ({
+        id,
+        title,
+        description,
+        price,
+        currency,
+      })
+    );
     setPosting(true);
     setError(null);
     setPostedCount(0);
@@ -122,7 +131,7 @@ export function SendToMarketplace({ drafts }: { drafts: ListingDraft[] }) {
       const res = await fetch("/api/marketplace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "post", drafts: readyDrafts }),
+        body: JSON.stringify({ action: "post", listings }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Posting failed");

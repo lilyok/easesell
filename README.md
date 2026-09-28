@@ -31,7 +31,7 @@ npm run lint
 
 Google Lens / reverse image search and Facebook Marketplace posting do not have simple public APIs for this flow. EaseSell ships a **pluggable provider layer** with **realistic mock/demo providers** when live credentials are missing:
 
-| Capability | Default | Live hook (optional) |
+| Capability | Current provider | Reserved live configuration |
 |---|---|---|
 | Reverse image search | Mock catalog (Amazon-preferred ranking) | `SERPAPI_KEY` or `GOOGLE_LENS_API_KEY` |
 | Facebook Marketplace | Mock login + post | `NEXT_PUBLIC_FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` |
@@ -58,7 +58,10 @@ cp .env.example .env.local
 | `FACEBOOK_APP_SECRET` | Server-side Facebook secret (never expose to the client) |
 | `FACEBOOK_REDIRECT_URI` | OAuth redirect for live posting flows |
 
-Until those are set **and** live adapters are implemented behind the provider interfaces, the app keeps using mocks so local demos never block on credentials.
+These variables are reserved for the live adapters. Setting them alone does
+not enable a live provider: until adapters are implemented behind the provider
+interfaces, the app keeps using mocks so local demos never block on
+credentials.
 
 Provider entry points:
 
@@ -69,7 +72,8 @@ Provider entry points:
 
 - Next.js (App Router) + TypeScript
 - Tailwind CSS + shadcn/ui
-- Client-side draft/settings persistence (`localStorage`) for the first slice
+- Client-side draft persistence (IndexedDB) and settings persistence
+  (`localStorage`) for the first slice
 
 ## Project layout
 

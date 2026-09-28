@@ -14,12 +14,18 @@ export function PhotoPicker({ onPick, compact = false }: PhotoPickerProps) {
   const inputId = useId();
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     setBusy(true);
+    setError(null);
     try {
       await onPick(Array.from(fileList));
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "The photos could not be read."
+      );
     } finally {
       setBusy(false);
       const input = document.getElementById(inputId) as HTMLInputElement | null;
@@ -81,6 +87,7 @@ export function PhotoPicker({ onPick, compact = false }: PhotoPickerProps) {
           type="button"
           size="lg"
           disabled={busy}
+          nativeButton={false}
           className="mt-1 bg-[color:var(--es-teal)] text-white hover:bg-[color:var(--es-teal-deep)]"
           render={<label htmlFor={inputId} />}
         >
@@ -95,6 +102,11 @@ export function PhotoPicker({ onPick, compact = false }: PhotoPickerProps) {
           disabled={busy}
           onChange={(e) => void handleFiles(e.target.files)}
         />
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

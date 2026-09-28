@@ -11,8 +11,7 @@ export type { ImageSearchProvider, ImageSearchResult } from "./types";
 export function getImageSearchProvider(): ImageSearchProvider {
   const liveKey =
     process.env.SERPAPI_KEY ||
-    process.env.GOOGLE_LENS_API_KEY ||
-    process.env.NEXT_PUBLIC_SERPAPI_KEY;
+    process.env.GOOGLE_LENS_API_KEY;
 
   if (liveKey) {
     // Live Google Lens / SerpAPI adapter can be plugged in here.

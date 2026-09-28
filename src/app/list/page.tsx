@@ -8,12 +8,14 @@ import { DraftCard } from "@/components/draft-card";
 import { SendToMarketplace } from "@/components/send-to-marketplace";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function ListPage() {
   const {
     drafts,
     settings,
     hydrated,
+    persistenceError,
     createDraftsFromFiles,
     updateDraft,
     removeDraft,
@@ -56,6 +58,12 @@ export default function ListPage() {
       <PhotoPicker onPick={createDraftsFromFiles} compact={drafts.length > 0} />
 
       <section className="mt-8 space-y-4">
+        {persistenceError && (
+          <Alert variant="destructive">
+            <AlertTitle>Draft storage unavailable</AlertTitle>
+            <AlertDescription>{persistenceError}</AlertDescription>
+          </Alert>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-[family-name:var(--font-display)] text-xl text-[color:var(--es-ink)]">

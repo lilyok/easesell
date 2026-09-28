@@ -6,8 +6,8 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -20,11 +20,15 @@ import type { ImageSearchResult } from "@/providers/image-search";
 
 const SETTINGS_KEY = "easesell.settings";
 const DRAFTS_KEY = "easesell.drafts";
+const DRAFTS_DB = "easesell";
+const DRAFTS_STORE = "drafts";
+const DRAFTS_RECORD = "all";
 
 interface AppContextValue {
   settings: AppSettings;
   drafts: ListingDraft[];
   hydrated: boolean;
+  persistenceError: string | null;
   updateSettings: (patch: Partial<AppSettings>) => void;
   createDraftsFromFiles: (files: File[]) => Promise<void>;
   updateDraft: (id: string, patch: Partial<ListingDraft>) => void;
@@ -36,10 +40,13 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-const emptySubscribe = () => () => {};
-
 function useHydrated() {
-  return useSyncExternalStore(emptySubscribe, () => true, () => false);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setHydrated(true), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return hydrated;
 }
 
 function readSettings(): AppSettings {
@@ -58,14 +65,48 @@ function readSettings(): AppSettings {
   }
 }
 
-function readDrafts(): ListingDraft[] {
-  try {
-    const raw = localStorage.getItem(DRAFTS_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as ListingDraft[];
-  } catch {
-    return [];
-  }
+function normalizeDrafts(drafts: ListingDraft[]): ListingDraft[] {
+  return drafts.map((draft) => ({
+    ...draft,
+    priceInput: draft.priceInput ?? null,
+    priceManuallyEdited: draft.priceManuallyEdited ?? false,
+  }));
+}
+
+function openDraftDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DRAFTS_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(DRAFTS_STORE)) {
+        request.result.createObjectStore(DRAFTS_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readDrafts(): Promise<ListingDraft[]> {
+  const db = await openDraftDatabase();
+  const stored = await new Promise<ListingDraft[] | undefined>(
+    (resolve, reject) => {
+      const transaction = db.transaction(DRAFTS_STORE, "readonly");
+      const request = transaction.objectStore(DRAFTS_STORE).get(DRAFTS_RECORD);
+      request.onsuccess = () => resolve(request.result as ListingDraft[]);
+      request.onerror = () => reject(request.error);
+    }
+  );
+  db.close();
+
+  if (stored) return normalizeDrafts(stored);
+
+  // Migrate drafts written by the first localStorage-based version.
+  const legacy = localStorage.getItem(DRAFTS_KEY);
+  if (!legacy) return [];
+  const drafts = normalizeDrafts(JSON.parse(legacy) as ListingDraft[]);
+  await writeDrafts(drafts);
+  localStorage.removeItem(DRAFTS_KEY);
+  return drafts;
 }
 
 async function compressImageFile(file: File): Promise<string> {
@@ -111,12 +152,16 @@ async function searchImage(
   return res.json();
 }
 
-function writeDrafts(next: ListingDraft[]) {
-  try {
-    localStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
-  } catch {
-    /* ignore quota */
-  }
+async function writeDrafts(next: ListingDraft[]): Promise<void> {
+  const db = await openDraftDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(DRAFTS_STORE, "readwrite");
+    transaction.objectStore(DRAFTS_STORE).put(next, DRAFTS_RECORD);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+  db.close();
 }
 
 function writeSettings(next: AppSettings) {
@@ -132,15 +177,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
   const [storageReady, setStorageReady] = useState(false);
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
+  const draftWriteChain = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (!hydrated) return;
-    // Hydrate from localStorage once on the client.
-    queueMicrotask(() => {
-      setSettings(readSettings());
-      setDrafts(readDrafts());
-      setStorageReady(true);
-    });
+    let cancelled = false;
+    void Promise.all([Promise.resolve().then(readSettings), readDrafts()])
+      .then(([storedSettings, storedDrafts]) => {
+        if (!cancelled) {
+          setSettings(storedSettings);
+          setDrafts(storedDrafts);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPersistenceError(
+            "Saved drafts could not be loaded. New drafts may not persist."
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStorageReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [hydrated]);
 
   useEffect(() => {
@@ -150,34 +212,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!storageReady) return;
-    writeDrafts(drafts);
+    draftWriteChain.current = draftWriteChain.current
+      .catch(() => undefined)
+      .then(() => writeDrafts(drafts))
+      .then(
+        () => setPersistenceError(null),
+        () =>
+          setPersistenceError(
+            "Drafts could not be saved. Free some browser storage before refreshing."
+          )
+      );
   }, [drafts, storageReady]);
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      if (
-        typeof patch.discountPercent === "number" &&
-        patch.discountPercent !== prev.discountPercent
-      ) {
-        setDrafts((current) =>
-          current.map((draft) => {
-            if (draft.originalPrice == null || draft.status !== "ready") {
-              return draft;
-            }
-            return {
-              ...draft,
-              price: listingPriceFromOriginal(
-                draft.originalPrice,
-                patch.discountPercent!
-              ),
-              updatedAt: new Date().toISOString(),
-            };
-          })
-        );
-      }
-      return next;
-    });
+    if (typeof patch.discountPercent === "number") {
+      setDrafts((current) =>
+        current.map((draft) => {
+          if (
+            draft.originalPrice == null ||
+            draft.status !== "ready" ||
+            draft.priceManuallyEdited
+          ) {
+            return draft;
+          }
+          return {
+            ...draft,
+            price: listingPriceFromOriginal(
+              draft.originalPrice,
+              patch.discountPercent!
+            ),
+            priceInput: null,
+            updatedAt: new Date().toISOString(),
+          };
+        })
+      );
+    }
+    setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const runSearchForDraft = useCallback(
@@ -220,6 +290,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 match.originalPrice,
                 discountPercent
               ),
+              priceInput: null,
+              priceManuallyEdited: false,
               currency: match.currency,
               source: match.source,
               sourceUrl: match.sourceUrl,
@@ -252,9 +324,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const imageFiles = files.filter((f) => f.type.startsWith("image/"));
       if (imageFiles.length === 0) return;
 
+      const prepared = await Promise.allSettled(
+        imageFiles.map(async (file) => ({
+          file,
+          imageDataUrl: await compressImageFile(file),
+        }))
+      );
       const created: ListingDraft[] = [];
-      for (const file of imageFiles) {
-        const imageDataUrl = await compressImageFile(file);
+      for (const result of prepared) {
+        if (result.status === "rejected") continue;
+        const { file, imageDataUrl } = result.value;
         const now = new Date().toISOString();
         created.push({
           id: crypto.randomUUID(),
@@ -264,6 +343,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           title: "",
           description: "",
           price: 0,
+          priceInput: null,
+          priceManuallyEdited: false,
           originalPrice: null,
           currency: "USD",
           source: null,
@@ -278,10 +359,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const discount = settings.discountPercent;
       void (async () => {
-        for (const draft of created) {
-          await runSearchForDraft(draft, discount);
-        }
+        let nextIndex = 0;
+        const workers = Array.from(
+          { length: Math.min(3, created.length) },
+          async () => {
+            while (nextIndex < created.length) {
+              const draft = created[nextIndex++];
+              await runSearchForDraft(draft, discount);
+            }
+          }
+        );
+        await Promise.all(workers);
       })();
+
+      const failedCount = prepared.length - created.length;
+      if (failedCount > 0) {
+        throw new Error(
+          `${failedCount} photo${failedCount === 1 ? "" : "s"} could not be read.`
+        );
+      }
     },
     [runSearchForDraft, settings.discountPercent]
   );
@@ -290,7 +386,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDrafts((prev) =>
       prev.map((d) =>
         d.id === id
-          ? { ...d, ...patch, updatedAt: new Date().toISOString() }
+          ? {
+              ...d,
+              ...patch,
+              priceManuallyEdited:
+                typeof patch.price === "number"
+                  ? true
+                  : d.priceManuallyEdited,
+              updatedAt: new Date().toISOString(),
+            }
           : d
       )
     );
@@ -335,6 +439,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settings,
       drafts,
       hydrated: ready,
+      persistenceError,
       updateSettings,
       createDraftsFromFiles,
       updateDraft,
@@ -347,6 +452,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settings,
       drafts,
       ready,
+      persistenceError,
       updateSettings,
       createDraftsFromFiles,
       updateDraft,
