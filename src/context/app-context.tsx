@@ -176,7 +176,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const hydrated = useHydrated();
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [drafts, setDrafts] = useState<ListingDraft[]>([]);
-  const [storageReady, setStorageReady] = useState(false);
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const [persistEnabled, setPersistEnabled] = useState(false);
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
   const draftWriteChain = useRef<Promise<void>>(Promise.resolve());
 
@@ -185,10 +186,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void Promise.all([Promise.resolve().then(readSettings), readDrafts()])
       .then(([storedSettings, storedDrafts]) => {
-        if (!cancelled) {
-          setSettings(storedSettings);
-          setDrafts(storedDrafts);
-        }
+        if (cancelled) return;
+        setSettings(storedSettings);
+        setDrafts(storedDrafts);
+        setPersistEnabled(true);
       })
       .catch(() => {
         if (!cancelled) {
@@ -198,7 +199,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       })
       .finally(() => {
-        if (!cancelled) setStorageReady(true);
+        if (!cancelled) setBootstrapped(true);
       });
     return () => {
       cancelled = true;
@@ -206,12 +207,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [hydrated]);
 
   useEffect(() => {
-    if (!storageReady) return;
+    if (!persistEnabled) return;
     writeSettings(settings);
-  }, [settings, storageReady]);
+  }, [settings, persistEnabled]);
 
   useEffect(() => {
-    if (!storageReady) return;
+    if (!persistEnabled) return;
     draftWriteChain.current = draftWriteChain.current
       .catch(() => undefined)
       .then(() => writeDrafts(drafts))
@@ -222,7 +223,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             "Drafts could not be saved. Free some browser storage before refreshing."
           )
       );
-  }, [drafts, storageReady]);
+  }, [drafts, persistEnabled]);
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     if (typeof patch.discountPercent === "number") {
@@ -432,7 +433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const ready = hydrated && storageReady;
+  const ready = hydrated && bootstrapped;
 
   const value = useMemo(
     () => ({
