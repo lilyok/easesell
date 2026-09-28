@@ -36,18 +36,13 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-const listeners = new Set<() => void>();
+const emptySubscribe = () => () => {};
 
-function emit() {
-  listeners.forEach((l) => l());
+function useHydrated() {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false);
 }
 
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function loadSettings(): AppSettings {
+function readSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return DEFAULT_SETTINGS;
@@ -63,7 +58,7 @@ function loadSettings(): AppSettings {
   }
 }
 
-function loadDrafts(): ListingDraft[] {
+function readDrafts(): ListingDraft[] {
   try {
     const raw = localStorage.getItem(DRAFTS_KEY);
     if (!raw) return [];
@@ -73,17 +68,6 @@ function loadDrafts(): ListingDraft[] {
   }
 }
 
-function persistSettings(settings: AppSettings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  emit();
-}
-
-function persistDrafts(drafts: ListingDraft[]) {
-  localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
-  emit();
-}
-
-/** Downscale large photos so mock search payloads stay under API body limits. */
 async function compressImageFile(file: File): Promise<string> {
   const raw = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -127,53 +111,57 @@ async function searchImage(
   return res.json();
 }
 
+function writeDrafts(next: ListingDraft[]) {
+  try {
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function writeSettings(next: AppSettings) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const hydrated = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
-
-  const storedSettings = useSyncExternalStore(
-    subscribe,
-    loadSettings,
-    () => DEFAULT_SETTINGS
-  );
-  const storedDrafts = useSyncExternalStore(subscribe, loadDrafts, () => []);
-
-  const [settingsOverride, setSettingsOverride] = useState<AppSettings | null>(
-    null
-  );
-  const [draftsOverride, setDraftsOverride] = useState<ListingDraft[] | null>(
-    null
-  );
-
-  const settings = settingsOverride ?? storedSettings;
-  const drafts = draftsOverride ?? storedDrafts;
+  const hydrated = useHydrated();
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [drafts, setDrafts] = useState<ListingDraft[]>([]);
+  const [storageReady, setStorageReady] = useState(false);
 
   useEffect(() => {
-    if (settingsOverride) {
-      persistSettings(settingsOverride);
-    }
-  }, [settingsOverride]);
+    if (!hydrated) return;
+    // Hydrate from localStorage once on the client.
+    queueMicrotask(() => {
+      setSettings(readSettings());
+      setDrafts(readDrafts());
+      setStorageReady(true);
+    });
+  }, [hydrated]);
 
   useEffect(() => {
-    if (draftsOverride) {
-      persistDrafts(draftsOverride);
-    }
-  }, [draftsOverride]);
+    if (!storageReady) return;
+    writeSettings(settings);
+  }, [settings, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    writeDrafts(drafts);
+  }, [drafts, storageReady]);
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
-    setSettingsOverride((prev) => {
-      const base = prev ?? loadSettings();
-      const next = { ...base, ...patch };
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
       if (
         typeof patch.discountPercent === "number" &&
-        patch.discountPercent !== base.discountPercent
+        patch.discountPercent !== prev.discountPercent
       ) {
-        setDraftsOverride((current) => {
-          const list = current ?? loadDrafts();
-          return list.map((draft) => {
+        setDrafts((current) =>
+          current.map((draft) => {
             if (draft.originalPrice == null || draft.status !== "ready") {
               return draft;
             }
@@ -185,8 +173,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ),
               updatedAt: new Date().toISOString(),
             };
-          });
-        });
+          })
+        );
       }
       return next;
     });
@@ -194,9 +182,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const runSearchForDraft = useCallback(
     async (draft: ListingDraft, discountPercent: number) => {
-      setDraftsOverride((prev) => {
-        const list = prev ?? loadDrafts();
-        return list.map((d) =>
+      setDrafts((prev) =>
+        prev.map((d) =>
           d.id === draft.id
             ? {
                 ...d,
@@ -205,14 +192,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 updatedAt: new Date().toISOString(),
               }
             : d
-        );
-      });
+        )
+      );
 
       try {
         const result = await searchImage(draft.imageDataUrl, draft.imageName);
-        setDraftsOverride((prev) => {
-          const list = prev ?? loadDrafts();
-          return list.map((d) => {
+        setDrafts((prev) =>
+          prev.map((d) => {
             if (d.id !== draft.id) return d;
             if (!result.found || !result.match) {
               return {
@@ -240,12 +226,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               errorMessage: null,
               updatedAt: new Date().toISOString(),
             };
-          });
-        });
+          })
+        );
       } catch {
-        setDraftsOverride((prev) => {
-          const list = prev ?? loadDrafts();
-          return list.map((d) =>
+        setDrafts((prev) =>
+          prev.map((d) =>
             d.id === draft.id
               ? {
                   ...d,
@@ -255,8 +240,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   updatedAt: new Date().toISOString(),
                 }
               : d
-          );
-        });
+          )
+        );
       }
     },
     []
@@ -289,7 +274,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      setDraftsOverride((prev) => [...created, ...(prev ?? loadDrafts())]);
+      setDrafts((prev) => [...created, ...prev]);
 
       const discount = settings.discountPercent;
       void (async () => {
@@ -302,25 +287,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const updateDraft = useCallback((id: string, patch: Partial<ListingDraft>) => {
-    setDraftsOverride((prev) => {
-      const list = prev ?? loadDrafts();
-      return list.map((d) =>
+    setDrafts((prev) =>
+      prev.map((d) =>
         d.id === id
           ? { ...d, ...patch, updatedAt: new Date().toISOString() }
           : d
-      );
-    });
+      )
+    );
   }, []);
 
   const removeDraft = useCallback((id: string) => {
-    setDraftsOverride((prev) => {
-      const list = prev ?? loadDrafts();
-      return list.filter((d) => d.id !== id);
-    });
+    setDrafts((prev) => prev.filter((d) => d.id !== id));
   }, []);
 
   const clearDrafts = useCallback(() => {
-    setDraftsOverride([]);
+    setDrafts([]);
   }, []);
 
   const retrySearch = useCallback(
@@ -333,26 +314,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const markDraftsPosted = useCallback((ids: string[]) => {
-    const set = new Set(ids);
-    setDraftsOverride((prev) => {
-      const list = prev ?? loadDrafts();
-      return list.map((d) =>
-        set.has(d.id)
+    const idSet = new Set(ids);
+    setDrafts((prev) =>
+      prev.map((d) =>
+        idSet.has(d.id)
           ? {
               ...d,
               status: "posted",
               updatedAt: new Date().toISOString(),
             }
           : d
-      );
-    });
+      )
+    );
   }, []);
+
+  const ready = hydrated && storageReady;
 
   const value = useMemo(
     () => ({
       settings,
       drafts,
-      hydrated,
+      hydrated: ready,
       updateSettings,
       createDraftsFromFiles,
       updateDraft,
@@ -364,7 +346,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       settings,
       drafts,
-      hydrated,
+      ready,
       updateSettings,
       createDraftsFromFiles,
       updateDraft,

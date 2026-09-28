@@ -40,9 +40,9 @@ export default function SettingsPage() {
                 max={100}
                 className="w-20 text-right"
                 disabled={!hydrated}
-                value={settings.discountPercent}
-                onChange={(e) => {
-                  const value = Number.parseInt(e.target.value, 10);
+                value={String(settings.discountPercent)}
+                onValueChange={(raw) => {
+                  const value = Number.parseInt(raw, 10);
                   if (Number.isNaN(value)) return;
                   updateSettings({
                     discountPercent: Math.min(100, Math.max(1, value)),

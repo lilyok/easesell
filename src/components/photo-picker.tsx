@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useState } from "react";
 import { ImagePlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,7 @@ interface PhotoPickerProps {
 }
 
 export function PhotoPicker({ onPick, compact = false }: PhotoPickerProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -22,7 +22,8 @@ export function PhotoPicker({ onPick, compact = false }: PhotoPickerProps) {
       await onPick(Array.from(fileList));
     } finally {
       setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
+      const input = document.getElementById(inputId) as HTMLInputElement | null;
+      if (input) input.value = "";
     }
   }
 
@@ -80,17 +81,18 @@ export function PhotoPicker({ onPick, compact = false }: PhotoPickerProps) {
           type="button"
           size="lg"
           disabled={busy}
-          onClick={() => inputRef.current?.click()}
           className="mt-1 bg-[color:var(--es-teal)] text-white hover:bg-[color:var(--es-teal-deep)]"
+          render={<label htmlFor={inputId} />}
         >
           {busy ? "Working…" : "Choose photos"}
         </Button>
         <input
-          ref={inputRef}
+          id={inputId}
           type="file"
           accept="image/*"
           multiple
           className="sr-only"
+          disabled={busy}
           onChange={(e) => void handleFiles(e.target.files)}
         />
       </div>

@@ -147,9 +147,7 @@ export function DraftCard({
               <Input
                 id={`title-${draft.id}`}
                 value={draft.title}
-                onChange={(e) =>
-                  onChange(draft.id, { title: e.target.value })
-                }
+                onValueChange={(title) => onChange(draft.id, { title })}
               />
             </div>
             <div className="grid gap-1.5">
@@ -176,10 +174,10 @@ export function DraftCard({
                     min={0}
                     step="0.01"
                     className="pl-7"
-                    value={draft.price}
-                    onChange={(e) =>
+                    value={String(draft.price)}
+                    onValueChange={(raw) =>
                       onChange(draft.id, {
-                        price: Number.parseFloat(e.target.value) || 0,
+                        price: Number.parseFloat(raw) || 0,
                       })
                     }
                   />
