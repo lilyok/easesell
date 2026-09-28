@@ -77,18 +77,12 @@ export default function SettingsPage() {
         <Alert>
           <AlertTitle>Providers</AlertTitle>
           <AlertDescription>
-            Image search and Facebook posting currently use mock/demo
-            providers. The environment variables documented in the README are
-            reserved for future live adapters; setting them alone does not
-            enable live posting. See the README for{" "}
+            Image search uses Google Lens when{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">
               SERPAPI_KEY
             </code>{" "}
-            and{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">
-              NEXT_PUBLIC_FACEBOOK_APP_ID
-            </code>
-            .
+            is set. Without that key, drafts are filled from a demo catalog and
+            the photo itself is not searched. Facebook posting is still a demo.
           </AlertDescription>
         </Alert>
       </div>

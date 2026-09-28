@@ -111,8 +111,8 @@ export default function ListPage() {
                 No drafts yet
               </p>
               <p className="max-w-sm text-sm text-[color:var(--es-ink-soft)]">
-                Choose photos above to create drafts. Tip: name a file with
-                “fail” to demo the not-found path.
+                Choose photos above. With a SerpAPI key, Google Lens identifies
+                the item. Without one, a demo catalog fills the draft.
               </p>
             </div>
           </div>

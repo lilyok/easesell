@@ -146,10 +146,11 @@ async function searchImage(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ imageDataUrl, imageName }),
   });
+  const payload = (await res.json()) as ImageSearchResult & { error?: string };
   if (!res.ok) {
-    throw new Error("Image search request failed");
+    throw new Error(payload.error || "Image search request failed");
   }
-  return res.json();
+  return payload;
 }
 
 async function writeDrafts(next: ListingDraft[]): Promise<void> {
@@ -301,15 +302,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
             };
           })
         );
-      } catch {
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "Search failed. Check your connection and retry.";
         setDrafts((prev) =>
           prev.map((d) =>
             d.id === draft.id
               ? {
                   ...d,
                   status: "failed",
-                  errorMessage:
-                    "Search failed. Check your connection and retry.",
+                  errorMessage: message,
                   updatedAt: new Date().toISOString(),
                 }
               : d

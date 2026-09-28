@@ -29,17 +29,17 @@ npm run lint
 
 ## Demo without API keys
 
-Google Lens / reverse image search and Facebook Marketplace posting do not have simple public APIs for this flow. EaseSell ships a **pluggable provider layer** with **realistic mock/demo providers** when live credentials are missing:
+Image search uses Google Lens when `SERPAPI_KEY` is set. Facebook Marketplace stays on a demo login and post. Without the image-search key, EaseSell fills drafts from a demo catalog so the app still runs:
 
-| Capability | Current provider | Reserved live configuration |
+| Capability | Without a key | With a key |
 |---|---|---|
-| Reverse image search | Mock catalog (Amazon-preferred ranking) | `SERPAPI_KEY` or `GOOGLE_LENS_API_KEY` |
-| Facebook Marketplace | Mock login + post | `NEXT_PUBLIC_FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` |
+| Reverse image search | Mock catalog (the photo is not inspected) | Google Lens via `SERPAPI_KEY` |
+| Facebook Marketplace | Mock login + post | Still mock |
 
 **Demo tips**
 
-- Upload any product-style photos to get ready drafts from the mock catalog.
-- Name a file with `fail`, `unknown`, or `blank` (e.g. `fail-chair.jpg`) to force the **not found** path.
+- Add `SERPAPI_KEY` to `.env.local` and restart the dev server to search the actual photo with Google Lens.
+- Without that key, any photo is filled from a demo catalog. Name a file with `fail`, `unknown`, or `blank` (e.g. `fail-chair.jpg`) to force the **not found** path.
 - Settings → change the discount %; ready drafts reprice automatically.
 - Send to Marketplace uses a simulated Facebook login until a live adapter is wired.
 
@@ -53,15 +53,13 @@ cp .env.example .env.local
 
 | Variable | Purpose |
 |---|---|
-| `SERPAPI_KEY` / `GOOGLE_LENS_API_KEY` | Live reverse image search (adapter stub ready) |
+| `SERPAPI_KEY` | Google Lens reverse image search. A SerpAPI private key from [serpapi.com](https://serpapi.com/manage-api-key). |
 | `NEXT_PUBLIC_FACEBOOK_APP_ID` | Facebook Login / Graph app id |
 | `FACEBOOK_APP_SECRET` | Server-side Facebook secret (never expose to the client) |
 | `FACEBOOK_REDIRECT_URI` | OAuth redirect for live posting flows |
 
-These variables are reserved for the live adapters. Setting them alone does
-not enable a live provider: until adapters are implemented behind the provider
-interfaces, the app keeps using mocks so local demos never block on
-credentials.
+`SERPAPI_KEY` turns on Google Lens. Facebook stays on the mock provider. Without
+the image-search key, local demos keep using the catalog so the app still runs.
 
 Provider entry points:
 

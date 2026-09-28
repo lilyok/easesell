@@ -20,9 +20,10 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("[image-search]", error);
-    return NextResponse.json(
-      { error: "Image search failed" },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Image search failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

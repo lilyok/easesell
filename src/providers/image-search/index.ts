@@ -1,24 +1,19 @@
+import { GoogleLensImageSearchProvider } from "./google-lens";
 import { MockImageSearchProvider } from "./mock";
 import type { ImageSearchProvider } from "./types";
 
 export type { ImageSearchProvider, ImageSearchResult } from "./types";
 
 /**
- * Pluggable reverse-image search.
- * When live API keys are present (SERPAPI_KEY / GOOGLE_LENS_API_KEY),
- * a live provider can be wired here. Until then, the mock provider runs.
+ * Google Lens via SerpAPI when SERPAPI_KEY is set.
+ * GOOGLE_LENS_API_KEY is accepted as an alias for the same SerpAPI key.
+ * Without a key, the mock catalog runs.
  */
 export function getImageSearchProvider(): ImageSearchProvider {
-  const liveKey =
-    process.env.SERPAPI_KEY ||
-    process.env.GOOGLE_LENS_API_KEY;
+  const apiKey = process.env.SERPAPI_KEY || process.env.GOOGLE_LENS_API_KEY;
 
-  if (liveKey) {
-    // Live Google Lens / SerpAPI adapter can be plugged in here.
-    // Falling back to mock until a concrete adapter is configured.
-    console.info(
-      "[easesell] Live image-search key detected; mock provider still active until a live adapter is configured."
-    );
+  if (apiKey) {
+    return new GoogleLensImageSearchProvider(apiKey);
   }
 
   return new MockImageSearchProvider();
