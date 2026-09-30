@@ -96,7 +96,7 @@ struct PaywallView: View {
                 Button("Subscribe") {
                     Task {
                         await model.subscribe()
-                        if model.account?.subscribed == true { dismiss() }
+                        if model.allowance.subscribed { dismiss() }
                     }
                 }
                 .buttonStyle(.borderedProminent)

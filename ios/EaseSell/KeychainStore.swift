@@ -3,9 +3,9 @@ import Security
 
 enum KeychainStore {
     private static let service = "app.easesell.ios"
-    private static let account = "session"
+    private static let account = "vision-api-key"
 
-    static func load() -> String? {
+    static func loadVisionKey() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -16,32 +16,22 @@ enum KeychainStore {
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data,
-              let token = String(data: data, encoding: .utf8)
+              let key = String(data: data, encoding: .utf8)
         else { return nil }
-        return token
+        return key
     }
 
-    static func save(_ token: String) {
-        let data = Data(token.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        let attributes: [String: Any] = [kSecValueData as String: data]
-        if SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecItemNotFound {
-            var insert = query
-            insert[kSecValueData as String] = data
-            SecItemAdd(insert as CFDictionary, nil)
-        }
-    }
-
-    static func clear() {
+    static func saveVisionKey(_ key: String) {
+        let data = Data(key.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
+        guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        var insert = query
+        insert[kSecValueData as String] = data
+        SecItemAdd(insert as CFDictionary, nil)
     }
 }

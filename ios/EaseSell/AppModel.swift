@@ -4,52 +4,37 @@ import UIKit
 @MainActor
 @Observable
 final class AppModel {
-    private(set) var account: Account?
+    private(set) var allowance = Allowance(used: 0, limit: Allowance.freeLimit, subscribed: false)
     private(set) var drafts: [ListingDraft] = []
+    var visionKey = ""
     var busy = false
     var alert: String?
     var paywall = false
-    var signedIn: Bool { sessionToken != nil }
+    var showSettings = false
 
     let purchases = PurchaseManager()
-    private let api = APIClient()
     private let store = DraftStore()
-    private var sessionToken: String?
     private var watchingPurchases = false
 
     init() {
-        sessionToken = KeychainStore.load()
+        visionKey = KeychainStore.loadVisionKey() ?? ""
         drafts = store.load()
         Task { await watchPurchases() }
     }
 
     func refresh() async {
-        guard let sessionToken else { return }
-        do {
-            account = try await api.account(token: sessionToken)
-        } catch let error as ServiceError where error.status == 401 {
-            signOut()
-        } catch {
-            alert = error.localizedDescription
-        }
+        let subscribed = await purchases.hasActiveSubscription()
+        allowance = QuotaStore.allowance(subscribed: subscribed)
     }
 
-    func signIn(identityToken: String) async {
-        await openSession { try await api.signIn(identityToken: identityToken) }
-    }
-
-    func signInDev() async {
-        await openSession { try await api.signInDev() }
-    }
-
-    func signOut() {
-        sessionToken = nil
-        account = nil
-        KeychainStore.clear()
+    func saveVisionKey() {
+        let trimmed = visionKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        visionKey = trimmed
+        KeychainStore.saveVisionKey(trimmed)
+        showSettings = false
     }
 
     func addPhoto(_ image: UIImage) async {
-        guard signedIn else { return }
         guard let data = ImageEncoding.jpeg(from: image) else {
             alert = "That photo could not be prepared."
             return
@@ -60,31 +45,37 @@ final class AppModel {
     }
 
     func identify(_ draft: ListingDraft) async {
-        guard let sessionToken else { return }
         guard let data = store.imageData(for: draft) else {
             alert = "The saved photo could not be read."
+            return
+        }
+        let subscribed = await purchases.hasActiveSubscription()
+        let reservation = QuotaStore.prepare(draftID: draft.id, subscribed: subscribed)
+        if reservation == .needsPayment {
+            allowance = QuotaStore.allowance(subscribed: subscribed)
+            paywall = true
             return
         }
         busy = true
         defer { busy = false }
         do {
-            let result = try await api.identify(token: sessionToken, draftID: draft.id, image: data)
+            let result = try await VisionClient.identify(image: data, apiKey: visionKey)
             store.update(id: draft.id) { item in
                 if !result.title.isEmpty { item.title = result.title }
                 item.details = result.details
-                item.sourceURL = result.sourceUrl
+                item.sourceURL = result.sourceURL
                 item.sourceTitle = result.sourceTitle
                 item.errorMessage = nil
             }
-            account = result.account
             drafts = store.load()
-        } catch let error as ServiceError where error.code == "payment_required" {
-            paywall = true
-        } catch let error as ServiceError where error.status == 401 {
-            signOut()
+            allowance = QuotaStore.allowance(subscribed: subscribed)
         } catch {
+            if reservation == .reserved {
+                QuotaStore.release(draftID: draft.id)
+            }
             store.update(id: draft.id) { $0.errorMessage = error.localizedDescription }
             drafts = store.load()
+            allowance = QuotaStore.allowance(subscribed: subscribed)
             alert = error.localizedDescription
         }
     }
@@ -108,41 +99,18 @@ final class AppModel {
     }
 
     func subscribe() async {
-        let unlocked = await purchases.purchase { [weak self] jws in
-            guard let self else { return }
-            try await self.submitSubscription(jws)
-        }
-        if unlocked {
-            paywall = false
-            await refresh()
-        }
-    }
-
-    private func openSession(_ request: () async throws -> SessionResponse) async {
-        busy = true
-        defer { busy = false }
-        do {
-            let session = try await request()
-            sessionToken = session.token
-            account = session.account
-            KeychainStore.save(session.token)
-        } catch {
-            alert = error.localizedDescription
-        }
-    }
-
-    private func submitSubscription(_ jws: String) async throws {
-        guard let sessionToken else { return }
-        account = try await api.submitSubscription(token: sessionToken, signedTransaction: jws)
+        let unlocked = await purchases.purchase()
+        await refresh()
+        if unlocked { paywall = false }
     }
 
     private func watchPurchases() async {
         guard !watchingPurchases else { return }
         watchingPurchases = true
         await purchases.load()
-        await purchases.watch { [weak self] jws in
-            guard let self else { return }
-            try await self.submitSubscription(jws)
+        await refresh()
+        await purchases.watch { [weak self] in
+            await self?.refresh()
         }
     }
 }

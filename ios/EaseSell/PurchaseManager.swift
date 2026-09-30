@@ -19,7 +19,7 @@ final class PurchaseManager {
         }
     }
 
-    func purchase(submit: (String) async throws -> Void) async -> Bool {
+    func purchase() async -> Bool {
         guard let product else {
             message = "EaseSell Plus is not available in this build."
             return false
@@ -29,9 +29,8 @@ final class PurchaseManager {
             switch result {
             case .success(let verification):
                 let transaction = try Self.verified(verification)
-                try await submit(verification.jwsRepresentation)
                 await transaction.finish()
-                return true
+                return await hasActiveSubscription()
             case .userCancelled, .pending:
                 return false
             @unknown default:
@@ -43,15 +42,21 @@ final class PurchaseManager {
         }
     }
 
-    func watch(submit: @escaping (String) async throws -> Void) async {
+    func hasActiveSubscription() async -> Bool {
+        for await result in Transaction.currentEntitlements {
+            guard let transaction = try? Self.verified(result) else { continue }
+            guard transaction.productID == productID, transaction.revocationDate == nil else { continue }
+            if let expiration = transaction.expirationDate, expiration < Date() { continue }
+            return true
+        }
+        return false
+    }
+
+    func watch(onChange: @escaping () async -> Void) async {
         for await update in Transaction.updates {
             guard let transaction = try? Self.verified(update) else { continue }
-            do {
-                try await submit(update.jwsRepresentation)
-                await transaction.finish()
-            } catch {
-                message = error.localizedDescription
-            }
+            await transaction.finish()
+            await onChange()
         }
     }
 

@@ -1,4 +1,3 @@
-import AuthenticationServices
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -7,26 +6,23 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Group {
-            if model.signedIn {
-                DraftListView()
-            } else {
-                SignInView()
+        DraftListView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(EaseColor.paper)
+            .alert("EaseSell", isPresented: alertShown) {
+                Button("OK", role: .cancel) { model.alert = nil }
+            } message: {
+                Text(model.alert ?? "")
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(EaseColor.paper)
-        .alert("EaseSell", isPresented: alertShown) {
-            Button("OK", role: .cancel) { model.alert = nil }
-        } message: {
-            Text(model.alert ?? "")
-        }
-        .sheet(isPresented: paywallShown) {
-            PaywallView()
-        }
-        .task {
-            await model.refresh()
-        }
+            .sheet(isPresented: paywallShown) {
+                PaywallView()
+            }
+            .sheet(isPresented: settingsShown) {
+                VisionKeyView()
+            }
+            .task {
+                await model.refresh()
+            }
     }
 
     private var alertShown: Binding<Bool> {
@@ -42,45 +38,39 @@ struct RootView: View {
             set: { model.paywall = $0 }
         )
     }
+
+    private var settingsShown: Binding<Bool> {
+        Binding(
+            get: { model.showSettings },
+            set: { model.showSettings = $0 }
+        )
+    }
 }
 
-struct SignInView: View {
+struct VisionKeyView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Spacer()
-            Text("EASESELL")
-                .font(.caption.weight(.semibold))
-                .tracking(3)
-                .foregroundStyle(EaseColor.teal)
-            Text("Photograph it. Name it. Price it.")
-                .font(.largeTitle.weight(.semibold))
-                .foregroundStyle(EaseColor.ink)
-            Text("Two listings a month are free. EaseSell Plus lifts the cap. The photo and the price stay on this iPhone.")
-                .foregroundStyle(EaseColor.inkSoft)
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = []
-            } onCompletion: { result in
-                guard case .success(let authorization) = result,
-                      let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                      let token = credential.identityToken,
-                      let text = String(data: token, encoding: .utf8)
-                else { return }
-                Task { await model.signIn(identityToken: text) }
+        @Bindable var model = model
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField("Google Cloud Vision key", text: $model.visionKey)
+                } footer: {
+                    Text("The key stays on this iPhone. EaseSell sends the photo to Google only to name it.")
+                }
             }
-            .signInWithAppleButtonStyle(.black)
-            .frame(height: 48)
-            #if DEBUG
-            Button("Continue on this simulator") {
-                Task { await model.signInDev() }
+            .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { model.saveVisionKey() }
+                }
             }
-            .buttonStyle(.bordered)
-            #endif
-            Spacer()
         }
-        .padding(24)
-        .disabled(model.busy)
     }
 }
 
@@ -118,7 +108,7 @@ struct DraftListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Sign out") { model.signOut() }
+                    Button("Settings") { model.showSettings = true }
                 }
                 ToolbarItem(placement: .principal) {
                     Text(allowance)
@@ -158,9 +148,8 @@ struct DraftListView: View {
     }
 
     private var allowance: String {
-        guard let account = model.account else { return "" }
-        if account.subscribed { return "Plus" }
-        return "\(account.used) of \(account.limit) free"
+        if model.allowance.subscribed { return "Plus" }
+        return "\(model.allowance.used) of \(model.allowance.limit) free"
     }
 }
 
