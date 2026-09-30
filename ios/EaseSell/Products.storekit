@@ -1,0 +1,66 @@
+{
+  "identifier" : "EASESELL",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "EASESELL_PLUS",
+      "localizations" : [
+
+      ],
+      "name" : "EaseSell Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "PLUSMONTHLY",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "List more than two items each month.",
+              "displayName" : "EaseSell Plus",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "app.easesell.plus.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "EaseSell Plus Monthly",
+          "subscriptionGroupID" : "EASESELL_PLUS",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
