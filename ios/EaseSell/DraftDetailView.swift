@@ -36,20 +36,26 @@ struct DraftDetailView: View {
                 Section {
                     Text(error)
                         .foregroundStyle(.red)
+                    Button(model.busy ? "Looking it up…" : "Try again") {
+                        suggestName()
+                    }
+                    .disabled(model.busy)
                 }
-            }
-            Section {
-                Button(model.busy ? "Naming…" : "Name this photo again") {
-                    guard let draft else { return }
-                    Task { await model.identify(draft) }
-                }
-                .disabled(model.busy)
             }
         }
         .navigationTitle(title.isEmpty ? "New item" : title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(model.busy ? "Looking it up…" : (draft?.errorMessage == nil ? "Suggest details" : "Try again")) {
+                    suggestName()
+                }
+                .disabled(model.busy)
+            }
+        }
         .onAppear(perform: load)
         .onChange(of: draft?.title) { _, _ in load() }
+        .onChange(of: draft?.price) { _, _ in load() }
         .onChange(of: title) { _, value in
             model.update(id: draftID, title: value)
         }
@@ -61,6 +67,11 @@ struct DraftDetailView: View {
             if filtered != value { price = filtered }
             model.update(id: draftID, price: filtered)
         }
+    }
+
+    private func suggestName() {
+        guard let draft else { return }
+        Task { await model.identify(draft) }
     }
 
     private func load() {

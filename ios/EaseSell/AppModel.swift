@@ -6,18 +6,18 @@ import UIKit
 final class AppModel {
     private(set) var allowance = Allowance(used: 0, limit: Allowance.freeLimit, subscribed: false)
     private(set) var drafts: [ListingDraft] = []
-    var visionKey = ""
     var busy = false
     var alert: String?
     var paywall = false
     var showSettings = false
+    var priceCoefficientText = PriceSettings.display
+    var currencyChoice = PriceSettings.currencyChoice
 
     let purchases = PurchaseManager()
     private let store = DraftStore()
     private var watchingPurchases = false
 
     init() {
-        visionKey = KeychainStore.loadVisionKey() ?? ""
         drafts = store.load()
         Task { await watchPurchases() }
     }
@@ -25,13 +25,6 @@ final class AppModel {
     func refresh() async {
         let subscribed = await purchases.hasActiveSubscription()
         allowance = QuotaStore.allowance(subscribed: subscribed)
-    }
-
-    func saveVisionKey() {
-        let trimmed = visionKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        visionKey = trimmed
-        KeychainStore.saveVisionKey(trimmed)
-        showSettings = false
     }
 
     func addPhoto(_ image: UIImage) async {
@@ -59,16 +52,24 @@ final class AppModel {
         busy = true
         defer { busy = false }
         do {
-            let result = try await VisionClient.identify(image: data, apiKey: visionKey)
+            let result = try await VisionClient.identify(image: data)
+            let suggestion = await suggestedPrice(for: result.sourceURL)
             store.update(id: draft.id) { item in
                 if !result.title.isEmpty { item.title = result.title }
                 item.details = result.details
                 item.sourceURL = result.sourceURL
                 item.sourceTitle = result.sourceTitle
+                if let suggestion {
+                    item.price = suggestion.amount
+                    item.currency = suggestion.currency
+                }
                 item.errorMessage = nil
             }
             drafts = store.load()
             allowance = QuotaStore.allowance(subscribed: subscribed)
+            if result.sourceURL != nil && suggestion == nil {
+                alert = "EaseSell could not read a \(PriceSettings.currencyCode) price from the similar page."
+            }
         } catch {
             if reservation == .reserved {
                 QuotaStore.release(draftID: draft.id)
@@ -96,6 +97,26 @@ final class AppModel {
 
     func image(for draft: ListingDraft) -> UIImage? {
         store.image(for: draft)
+    }
+
+    func savePriceCoefficient() {
+        let saved = PriceSettings.save(priceCoefficientText)
+        priceCoefficientText = PriceSettings.display
+        if saved {
+            PriceSettings.saveCurrency(currencyChoice)
+            showSettings = false
+        } else {
+            alert = "Enter a coefficient greater than 0, such as 0.3."
+        }
+    }
+
+    private func suggestedPrice(for sourceURL: String?) async -> SuggestedPrice? {
+        guard let sourceURL, let url = URL(string: sourceURL) else { return nil }
+        guard let shop = await PagePrice.fetch(from: url, currency: PriceSettings.currencyCode) else { return nil }
+        let coefficient = Decimal(PriceSettings.coefficient)
+        let asked = shop.amount * coefficient
+        guard asked > 0 else { return nil }
+        return SuggestedPrice(amount: PriceSettings.formatMoney(asked), currency: shop.currency)
     }
 
     func subscribe() async {

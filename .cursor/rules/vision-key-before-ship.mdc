@@ -1,0 +1,13 @@
+---
+description: Keep the Google Cloud Vision key out of git when archiving or pushing EaseSell.
+alwaysApply: false
+---
+
+# Vision key before a test build
+
+The live Google Cloud Vision key is in `ios/EaseSell/VisionClient.swift` (`apiKey`) on this machine.
+
+When the user wants to archive, upload to TestFlight, commit, or push:
+
+- Leave that key in the app so naming works.
+- Do not commit or push `VisionClient.swift` while it contains the key. The GitHub repo is public.

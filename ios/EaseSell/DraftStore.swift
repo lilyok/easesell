@@ -9,11 +9,21 @@ struct ListingDraft: Codable, Identifiable, Equatable {
     var price: String
     var sourceURL: String?
     var sourceTitle: String?
+    var currency: String?
     var errorMessage: String?
     var createdAt: Date
 
     var displayTitle: String {
         title.isEmpty ? "New item" : title
+    }
+
+    var priceLabel: String {
+        if price.isEmpty { return "Price not set" }
+        return "\(currencySymbol)\(price)"
+    }
+
+    private var currencySymbol: String {
+        PriceSettings.symbol(for: currency ?? "")
     }
 }
 
