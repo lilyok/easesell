@@ -8,13 +8,10 @@ struct PhotoMatch {
 }
 
 enum VisionError: Error, LocalizedError {
-    case missingKey
     case message(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingKey:
-            return "Add your Google Cloud Vision key in Settings."
         case .message(let text):
             return text
         }
@@ -22,26 +19,34 @@ enum VisionError: Error, LocalizedError {
 }
 
 enum VisionClient {
-    static func identify(image: Data, apiKey: String) async throws -> PhotoMatch {
-        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { throw VisionError.missingKey }
+    /// Google Cloud Vision key shipped with the app. Users never enter it.
+    /// Fill this in locally. Do not commit the value; the GitHub repo is public.
+    private static let apiKey = ""
 
-        var components = URLComponents(string: "https://vision.googleapis.com/v1/images:annotate")!
-        components.queryItems = [URLQueryItem(name: "key", value: key)]
-        var request = URLRequest(url: components.url!)
+    static func identify(image: Data) async throws -> PhotoMatch {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            throw VisionError.message("EaseSell cannot name this photo yet.")
+        }
+
+        let url = URL(string: "https://vision.googleapis.com/v1/images:annotate")!
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(key, forHTTPHeaderField: "X-Goog-Api-Key")
+        request.setValue("app.easesell.ios", forHTTPHeaderField: "X-Ios-Bundle-Identifier")
         let body: [String: Any] = [
             "requests": [
                 [
                     "image": ["content": image.base64EncodedString()],
-                    "features": [["type": "WEB_DETECTION", "maxResults": 5]],
+                    "features": [["type": "WEB_DETECTION", "maxResults": 15]],
                 ],
             ],
         ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let payload = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await send(request, body: payload)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         if status >= 400 {
@@ -56,6 +61,30 @@ enum VisionClient {
         return match(web: first?["webDetection"] as? [String: Any])
     }
 
+    private static func send(_ request: URLRequest, body: Data) async throws -> (Data, URLResponse) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 60
+        let session = URLSession(configuration: configuration)
+        defer { session.finishTasksAndInvalidate() }
+
+        let retryable: Set<URLError.Code> = [
+            .networkConnectionLost, .timedOut, .cannotConnectToHost, .notConnectedToInternet,
+        ]
+        var lastError: Error = URLError(.networkConnectionLost)
+        for attempt in 0..<3 {
+            do {
+                return try await session.upload(for: request, from: body)
+            } catch let error as URLError where retryable.contains(error.code) && attempt < 2 {
+                lastError = error
+                try await Task.sleep(nanoseconds: UInt64(attempt + 1) * 500_000_000)
+            } catch {
+                throw error
+            }
+        }
+        throw lastError
+    }
+
     private static func match(web: [String: Any]?) -> PhotoMatch {
         let guesses = web?["bestGuessLabels"] as? [[String: Any]]
         let entities = web?["webEntities"] as? [[String: Any]]
@@ -66,23 +95,60 @@ enum VisionClient {
             .compactMap { $0["description"] as? String }
             .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let title = (guess ?? entity)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let page = pages?.first { ($0["url"] as? String)?.hasPrefix("http") == true }
+        let page = LocalPage.preferred(from: pages ?? [])
         let sourceURL = page?["url"] as? String
         let sourceTitle = (page?["pageTitle"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if title.isEmpty {
-            return PhotoMatch(
-                title: "",
-                details: "Google Vision did not recognize this photo. Name the item and set the price you want to ask.",
-                sourceURL: sourceURL,
-                sourceTitle: sourceTitle
-            )
-        }
-        let pageSentence = (sourceTitle?.isEmpty == false) ? " A similar page is “\(sourceTitle!)”." : ""
+        let extraLabels = (entities ?? [])
+            .sorted { (($0["score"] as? Double) ?? 0) > (($1["score"] as? Double) ?? 0) }
+            .compactMap { $0["description"] as? String }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.caseInsensitiveCompare(title) != .orderedSame }
+        var seen = Set<String>()
+        let details = extraLabels
+            .filter { seen.insert($0.lowercased()).inserted }
+            .prefix(3)
+            .joined(separator: ", ")
         return PhotoMatch(
             title: String(title.prefix(180)),
-            details: "Google Vision matched this photo to “\(title)”.\(pageSentence) Set the price you want to ask.",
+            details: String(details.prefix(500)),
             sourceURL: sourceURL,
             sourceTitle: sourceTitle
         )
+    }
+}
+
+enum LocalPage {
+    static func preferred(from pages: [[String: Any]]) -> [String: Any]? {
+        let country = Locale.current.region?.identifier ?? "GB"
+        let usable = pages.enumerated().filter { ($0.element["url"] as? String)?.hasPrefix("http") == true }
+        return usable.max { lhs, rhs in
+            let left = score(lhs.element, country: country)
+            let right = score(rhs.element, country: country)
+            if left == right { return lhs.offset > rhs.offset }
+            return left < right
+        }?.element
+    }
+
+    private static func score(_ page: [String: Any], country: String) -> Int {
+        guard let url = page["url"] as? String, let host = URL(string: url)?.host?.lowercased() else { return 0 }
+        var value = 0
+        if suffixes(for: country).contains(where: { host.hasSuffix($0) }) {
+            value += 20
+        }
+        if host.contains("youtube") || host.contains("pinterest") || host.contains("wikipedia") || host.contains("facebook") {
+            value -= 30
+        }
+        return value
+    }
+
+    private static func suffixes(for country: String) -> [String] {
+        switch country {
+        case "GB": return [".co.uk", ".uk"]
+        case "AU": return [".com.au"]
+        case "IE": return [".ie"]
+        case "JP": return [".co.jp", ".jp"]
+        case "US": return []
+        default: return [".\(country.lowercased())"]
+        }
     }
 }

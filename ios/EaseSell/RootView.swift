@@ -18,7 +18,7 @@ struct RootView: View {
                 PaywallView()
             }
             .sheet(isPresented: settingsShown) {
-                VisionKeyView()
+                PriceSettingsView()
             }
             .task {
                 await model.refresh()
@@ -32,6 +32,13 @@ struct RootView: View {
         )
     }
 
+    private var settingsShown: Binding<Bool> {
+        Binding(
+            get: { model.showSettings },
+            set: { model.showSettings = $0 }
+        )
+    }
+
     private var paywallShown: Binding<Bool> {
         Binding(
             get: { model.paywall },
@@ -39,15 +46,9 @@ struct RootView: View {
         )
     }
 
-    private var settingsShown: Binding<Bool> {
-        Binding(
-            get: { model.showSettings },
-            set: { model.showSettings = $0 }
-        )
-    }
 }
 
-struct VisionKeyView: View {
+struct PriceSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
@@ -56,9 +57,22 @@ struct VisionKeyView: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("Google Cloud Vision key", text: $model.visionKey)
+                    Picker("Currency", selection: $model.currencyChoice) {
+                        Text("iPhone region (\(PriceSettings.regionCurrency))")
+                            .tag("")
+                        ForEach(PriceSettings.choices, id: \.code) { choice in
+                            Text("\(choice.name) (\(PriceSettings.symbol(for: choice.code)))")
+                                .tag(choice.code)
+                        }
+                    }
                 } footer: {
-                    Text("The key stays on this iPhone. EaseSell sends the photo to Google only to name it.")
+                    Text("EaseSell looks for this currency on the similar page. iPhone region uses the region in Settings, not an Apple Pay card.")
+                }
+                Section {
+                    TextField("Coefficient", text: $model.priceCoefficientText)
+                        .keyboardType(.decimalPad)
+                } footer: {
+                    Text("EaseSell multiplies the shop price from the similar page by this. 0.3 means 30% of that price.")
                 }
             }
             .navigationTitle("Settings")
@@ -67,7 +81,7 @@ struct VisionKeyView: View {
                     Button("Close") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { model.saveVisionKey() }
+                    Button("Save") { model.savePriceCoefficient() }
                 }
             }
         }
@@ -171,8 +185,7 @@ struct DraftRow: View {
     }
 
     private var priceLabel: String {
-        if draft.price.isEmpty { return "Price not set" }
-        return "$\(draft.price)"
+        draft.priceLabel
     }
 
     @ViewBuilder
