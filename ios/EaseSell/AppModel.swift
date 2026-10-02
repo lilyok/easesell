@@ -10,6 +10,9 @@ final class AppModel {
     var alert: String?
     var paywall = false
     var showSettings = false
+    var purchasing = false
+    var openPaywallAfterSettings = false
+    private var pendingLookup: UUID?
     var priceCoefficientText = PriceSettings.display
     var currencyChoice = PriceSettings.currencyChoice
 
@@ -49,6 +52,7 @@ final class AppModel {
         let subscribed = await purchases.hasActiveSubscription()
         allowance = QuotaStore.allowance(subscribed: subscribed)
         if !QuotaStore.canRequest(subscribed: subscribed) {
+            pendingLookup = draft.id
             paywall = true
             return
         }
@@ -121,9 +125,24 @@ final class AppModel {
     }
 
     func subscribe() async {
-        let unlocked = await purchases.purchase()
+        await unlock(using: purchases.purchase)
+    }
+
+    func restorePurchases() async {
+        await unlock(using: purchases.restore)
+    }
+
+    private func unlock(using action: () async -> Bool) async {
+        purchasing = true
+        defer { purchasing = false }
+        let unlocked = await action()
         await refresh()
-        if unlocked { paywall = false }
+        guard unlocked else { return }
+        paywall = false
+        guard let id = pendingLookup else { return }
+        pendingLookup = nil
+        guard let draft = drafts.first(where: { $0.id == id }) else { return }
+        await identify(draft)
     }
 
     private func watchPurchases() async {

@@ -11,9 +11,7 @@ final class PurchaseManager {
     func load() async {
         do {
             product = try await Product.products(for: [productID]).first
-            if product == nil {
-                message = "EaseSell Plus is not available in this build."
-            }
+            message = product == nil ? "EaseSell Plus is not available in this build." : nil
         } catch {
             message = "The subscription could not be loaded."
         }
@@ -30,7 +28,8 @@ final class PurchaseManager {
             case .success(let verification):
                 let transaction = try Self.verified(verification)
                 await transaction.finish()
-                return await hasActiveSubscription()
+                message = nil
+                return isActive(transaction)
             case .userCancelled, .pending:
                 return false
             @unknown default:
@@ -42,14 +41,39 @@ final class PurchaseManager {
         }
     }
 
+    func restore() async -> Bool {
+        do {
+            try await AppStore.sync()
+        } catch is CancellationError {
+            return false
+        } catch StoreKitError.userCancelled {
+            return false
+        } catch {
+            message = error.localizedDescription
+            return false
+        }
+        let active = await hasActiveSubscription()
+        message = active ? nil : "No active EaseSell Plus subscription was found."
+        return active
+    }
+
     func hasActiveSubscription() async -> Bool {
+        if let result = await Transaction.latest(for: productID),
+           let transaction = try? Self.verified(result),
+           isActive(transaction) {
+            return true
+        }
         for await result in Transaction.currentEntitlements {
-            guard let transaction = try? Self.verified(result) else { continue }
-            guard transaction.productID == productID, transaction.revocationDate == nil else { continue }
-            if let expiration = transaction.expirationDate, expiration < Date() { continue }
+            guard let transaction = try? Self.verified(result), isActive(transaction) else { continue }
             return true
         }
         return false
+    }
+
+    private func isActive(_ transaction: Transaction) -> Bool {
+        guard transaction.productID == productID, transaction.revocationDate == nil else { return false }
+        if let expiration = transaction.expirationDate, expiration < Date() { return false }
+        return true
     }
 
     func watch(onChange: @escaping () async -> Void) async {

@@ -38,14 +38,14 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "4.99",
+          "displayPrice" : "2.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "PLUSMONTHLY",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "List more than two items each month.",
+              "description" : "Suggest listing details with no weekly limit.",
               "displayName" : "EaseSell Plus",
               "locale" : "en_US"
             }
