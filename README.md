@@ -8,7 +8,7 @@ The app runs on the phone. Photos, titles, descriptions, prices, and the weekly 
 
 Open `ios/EaseSell.xcodeproj` in Xcode. Choose your iPhone and press Run. The Google Cloud Vision key is compiled into the app, and the photo is sent to Google only to name the item.
 
-The shared scheme loads `ios/EaseSell/Products.storekit` for local subscription tests. Its test price is $4.99 a month. The price customers pay is the one you set in App Store Connect for `app.easesell.plus.monthly`.
+The shared scheme loads `ios/EaseSell/Products.storekit` for local subscription tests. Its test price is $2.99 a month. The price customers pay is the one you set in App Store Connect for `app.easesell.plus.monthly`. After a purchase or a restored subscription, Suggest details works with no weekly limit.
 
 ## Stack
 

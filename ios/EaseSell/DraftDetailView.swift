@@ -89,29 +89,33 @@ struct PaywallView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Two lookups are used this week.")
+                Text(headline)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(EaseColor.ink)
-                Text("You can still add listings and type the details yourself. EaseSell Plus removes the weekly limit on suggesting details.")
+                Text("EaseSell Plus removes the weekly limit. Suggest details keeps working, and listings stay on this iPhone.")
                     .foregroundStyle(EaseColor.inkSoft)
                 if let product = model.purchases.product {
                     Text(product.displayPrice + " per month")
                         .font(.headline)
                         .foregroundStyle(EaseColor.ink)
+                    Text("Renews every month until you cancel in Settings. Two lookups a week stay free without it.")
+                        .font(.footnote)
+                        .foregroundStyle(EaseColor.inkSoft)
                 }
                 if let message = model.purchases.message {
                     Text(message)
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }
-                Button("Subscribe") {
-                    Task {
-                        await model.subscribe()
-                        if model.allowance.subscribed { dismiss() }
-                    }
+                Button(model.purchasing ? "Subscribing…" : subscribeTitle) {
+                    Task { await model.subscribe() }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(model.busy)
+                .disabled(model.purchasing || model.allowance.subscribed)
+                Button(model.purchasing ? "Restoring…" : "Restore purchase") {
+                    Task { await model.restorePurchases() }
+                }
+                .disabled(model.purchasing || model.allowance.subscribed)
                 Spacer()
             }
             .padding(24)
@@ -123,6 +127,23 @@ struct PaywallView: View {
                     Button("Close") { dismiss() }
                 }
             }
+            .onChange(of: model.paywall) { _, shown in
+                if !shown { dismiss() }
+            }
         }
+    }
+
+    private var headline: String {
+        if model.allowance.used >= model.allowance.limit {
+            return "Two lookups are used this week."
+        }
+        return "Suggest details without a weekly limit."
+    }
+
+    private var subscribeTitle: String {
+        if let product = model.purchases.product {
+            return "Subscribe for \(product.displayPrice) / month"
+        }
+        return "Subscribe"
     }
 }

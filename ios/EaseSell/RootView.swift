@@ -17,7 +17,12 @@ struct RootView: View {
             .sheet(isPresented: paywallShown) {
                 PaywallView()
             }
-            .sheet(isPresented: settingsShown) {
+            .sheet(isPresented: settingsShown, onDismiss: {
+                if model.openPaywallAfterSettings {
+                    model.openPaywallAfterSettings = false
+                    model.paywall = true
+                }
+            }) {
                 PriceSettingsView()
             }
             .task {
@@ -56,6 +61,18 @@ struct PriceSettingsView: View {
         @Bindable var model = model
         NavigationStack {
             Form {
+                Section {
+                    if model.allowance.subscribed {
+                        Text("EaseSell Plus is active.")
+                    } else {
+                        Button("Get EaseSell Plus") {
+                            model.openPaywallAfterSettings = true
+                            model.showSettings = false
+                        }
+                    }
+                } footer: {
+                    Text("Plus removes the weekly limit on suggesting details.")
+                }
                 Section {
                     Picker("Currency", selection: $model.currencyChoice) {
                         Text("iPhone region (\(PriceSettings.regionCurrency))")
