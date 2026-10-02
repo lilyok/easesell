@@ -89,10 +89,10 @@ struct PaywallView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Two free listings are used this month.")
+                Text("Two lookups are used this week.")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(EaseColor.ink)
-                Text("EaseSell Plus removes the monthly cap. The photo and the price still stay on this iPhone.")
+                Text("You can still add listings and type the details yourself. EaseSell Plus removes the weekly limit on suggesting details.")
                     .foregroundStyle(EaseColor.inkSoft)
                 if let product = model.purchases.product {
                     Text(product.displayPrice + " per month")

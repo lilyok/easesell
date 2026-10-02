@@ -9,49 +9,34 @@ struct Allowance: Equatable {
 }
 
 enum QuotaStore {
-    private static let key = "easesell.usage"
+    private static let key = "easesell.visionWeek"
 
     static func allowance(subscribed: Bool, now: Date = Date()) -> Allowance {
         let usage = load(now: now)
-        return Allowance(used: usage.ids.count, limit: Allowance.freeLimit, subscribed: subscribed)
+        return Allowance(used: usage.count, limit: Allowance.freeLimit, subscribed: subscribed)
     }
 
-    static func prepare(draftID: UUID, subscribed: Bool, now: Date = Date()) -> PrepareResult {
-        var usage = load(now: now)
-        if usage.ids.contains(draftID.uuidString) {
-            return .alreadyCounted
-        }
-        if !subscribed && usage.ids.count >= Allowance.freeLimit {
-            return .needsPayment
-        }
-        usage.ids.append(draftID.uuidString)
-        save(usage)
-        return .reserved
+    static func canRequest(subscribed: Bool, now: Date = Date()) -> Bool {
+        subscribed || load(now: now).count < Allowance.freeLimit
     }
 
-    static func release(draftID: UUID, now: Date = Date()) {
+    static func record(now: Date = Date()) {
         var usage = load(now: now)
-        usage.ids.removeAll { $0 == draftID.uuidString }
+        usage.count += 1
         save(usage)
     }
 
     private struct Usage: Codable {
-        var month: String
-        var ids: [String]
-    }
-
-    enum PrepareResult: Equatable {
-        case alreadyCounted
-        case reserved
-        case needsPayment
+        var week: String
+        var count: Int
     }
 
     private static func load(now: Date) -> Usage {
-        let month = monthKey(now)
+        let week = weekKey(now)
         guard let data = UserDefaults.standard.data(forKey: key),
               let usage = try? JSONDecoder().decode(Usage.self, from: data),
-              usage.month == month
-        else { return Usage(month: month, ids: []) }
+              usage.week == week
+        else { return Usage(week: week, count: 0) }
         return usage
     }
 
@@ -60,11 +45,11 @@ enum QuotaStore {
         UserDefaults.standard.set(data, forKey: key)
     }
 
-    private static func monthKey(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM"
-        return formatter.string(from: date)
+    private static func weekKey(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = .current
+        let week = calendar.component(.weekOfYear, from: date)
+        let year = calendar.component(.yearForWeekOfYear, from: date)
+        return String(format: "%d-W%02d", year, week)
     }
 }

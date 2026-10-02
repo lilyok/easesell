@@ -1,8 +1,8 @@
 # EaseSell
 
-Photograph an item on an iPhone. EaseSell asks Google Cloud Vision what it is, then suggests an asking price from the similar page. Two listings a month are free. EaseSell Plus removes that cap.
+Photograph an item on an iPhone. EaseSell asks Google Cloud Vision what it is, then suggests an asking price from the similar page. You can add as many listings as you want. Two Vision lookups a week are free. EaseSell Plus removes that limit.
 
-The app runs on the phone. Photos, titles, descriptions, prices, and the monthly count stay there. There is no Mac service to start.
+The app runs on the phone. Photos, titles, descriptions, prices, and the weekly lookup count stay there. There is no Mac service to start.
 
 ## Run it
 

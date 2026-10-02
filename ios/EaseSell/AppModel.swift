@@ -34,7 +34,11 @@ final class AppModel {
         }
         let draft = store.create(imageData: data)
         drafts = store.load()
-        await identify(draft)
+        let subscribed = await purchases.hasActiveSubscription()
+        allowance = QuotaStore.allowance(subscribed: subscribed)
+        if QuotaStore.canRequest(subscribed: subscribed) {
+            await identify(draft)
+        }
     }
 
     func identify(_ draft: ListingDraft) async {
@@ -43,9 +47,8 @@ final class AppModel {
             return
         }
         let subscribed = await purchases.hasActiveSubscription()
-        let reservation = QuotaStore.prepare(draftID: draft.id, subscribed: subscribed)
-        if reservation == .needsPayment {
-            allowance = QuotaStore.allowance(subscribed: subscribed)
+        allowance = QuotaStore.allowance(subscribed: subscribed)
+        if !QuotaStore.canRequest(subscribed: subscribed) {
             paywall = true
             return
         }
@@ -53,6 +56,7 @@ final class AppModel {
         defer { busy = false }
         do {
             let result = try await VisionClient.identify(image: data)
+            if !subscribed { QuotaStore.record() }
             let suggestion = await suggestedPrice(for: result.sourceURL)
             store.update(id: draft.id) { item in
                 if !result.title.isEmpty { item.title = result.title }
@@ -71,9 +75,6 @@ final class AppModel {
                 alert = "EaseSell could not read a \(PriceSettings.currencyCode) price from the similar page."
             }
         } catch {
-            if reservation == .reserved {
-                QuotaStore.release(draftID: draft.id)
-            }
             store.update(id: draft.id) { $0.errorMessage = error.localizedDescription }
             drafts = store.load()
             allowance = QuotaStore.allowance(subscribed: subscribed)
