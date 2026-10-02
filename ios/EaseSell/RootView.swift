@@ -163,7 +163,7 @@ struct DraftListView: View {
 
     private var allowance: String {
         if model.allowance.subscribed { return "Plus" }
-        return "\(model.allowance.used) of \(model.allowance.limit) free"
+        return "\(model.allowance.used) of \(model.allowance.limit) this week"
     }
 }
 
